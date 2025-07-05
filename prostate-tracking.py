@@ -80,12 +80,18 @@ class TrackRoi:
         cv.imshow('Annotated ROI Image', annotatedRoiFrame) # Display the full ROI ultrasound image with a rectangle over the ROI
 
     # Filter the image if self.enableFiltering is True
-    def filterImage(self, image : np.array):
+    def filterImage(self, image : np.array) -> np.array:
         if self.enableFiltering:
-            filteredImage = cv.medianBlur(image, self.blur)
+            blurImage = cv.medianBlur(image, self.blur)
         else:
-            filteredImage = copy.copy(image)
-        return filteredImage
+            blurImage = copy.copy(image)
+
+        contrastImage      = cv.convertScaleAbs(src=blurImage, alpha=self.alpha, beta=self.beta)
+        ret,thresholdImage = cv.threshold(contrastImage, self.thresh, self.maxval, cv.THRESH_BINARY)
+        cv.imshow("Contrast" , contrastImage)
+        cv.imshow("Threshold", thresholdImage)
+ 
+        return thresholdImage
         
     # Find the ROI in the next video frame and draw the frame with the annotated ROI
     def processNextFrame(self):
@@ -115,7 +121,7 @@ class TrackRoi:
         index = minIndex = 0
         minErr = 0
         minX = minY = 0
-        for x in range(self.curRoiRect.x - self.searchWindow, self.curRoiRect.x + .self.searchWindow):
+        for x in range(self.curRoiRect.x - self.searchWindow, self.curRoiRect.x + self.searchWindow):
             for y in range(self.curRoiRect.y - self.searchWindow, self.curRoiRect.y + self.searchWindow):
                 # extract the ROI rect from the new image, located at <x, y>
                 testRoiImage = newGrayFrame[y:y+self.curRoiRect.h, x:x+self.curRoiRect.w]
