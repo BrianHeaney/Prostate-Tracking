@@ -53,13 +53,22 @@ class TrackRoi:
         self.origRoiRect    = Rect(roiCenter.x - int(roiSize.w/2), roiCenter.y - int(roiSize.h/2), roiSize.w, roiSize.h)
         self.curRoiRect     = copy.copy(self.origRoiRect)
 
+        self.searchWindow = 10   # +/- pixels around the ROI rect to search for the best match
+ 
+        self.enableFiltering = True
+        self.blur  = 5
+        self.alpha = 1.5
+        self.beta  = 0.0
+        self.thresh = 150
+        self.maxval = 255
+
         # read the ROI image file and crop the ROI rect into roiImage
         roiFullImage = cv.imread  (self.initialRoiFile, cv.IMREAD_COLOR)
         roiGrayImage = cv.cvtColor(roiFullImage, cv.COLOR_BGR2GRAY)
         self.origRoiImage = roiGrayImage[self.origRoiRect.y:self.origRoiRect.y+self.origRoiRect.h, 
                                          self.origRoiRect.x:self.origRoiRect.x+self.origRoiRect.w]
-        self.curRoiImage  = copy.copy(self.origRoiImage)
 
+        self.curRoiImage = self.filterImage(self.origRoiImage)
 
         # Draw a red rect around the ROI and a magenta circle at the ROI center in the full u/s frame
         annotatedRoiFrame = copy.copy(roiFullImage)
@@ -70,6 +79,14 @@ class TrackRoi:
         cv.circle(annotatedRoiFrame, (roiCenter.x, roiCenter.y), 1, (255, 0, 255), 3)
         cv.imshow('Annotated ROI Image', annotatedRoiFrame) # Display the full ROI ultrasound image with a rectangle over the ROI
 
+    # Filter the image if self.enableFiltering is True
+    def filterImage(self, image : np.array):
+        if self.enableFiltering:
+            filteredImage = cv.medianBlur(image, self.blur)
+        else:
+            filteredImage = copy.copy(image)
+        return filteredImage
+        
     # Find the ROI in the next video frame and draw the frame with the annotated ROI
     def processNextFrame(self):
         ret, newFrame = self.video.read() # Read a frame
@@ -79,15 +96,27 @@ class TrackRoi:
             cv.destroyAllWindows()
             exit()
 
-        # find the ROI in the current frame by moving the current ROI image around the searchWindox box to find the location with the smalled difference
         newGrayFrame = cv.cvtColor(newFrame, cv.COLOR_BGR2GRAY)
-        searchWindow = 10   # num pixels around the ROI rect to search for a match
+        newGrayFrame = self.filterImage(newGrayFrame)
+
+        # Extract and display the transverse scan
+        x, y, w, h = 198, 91, 795, 453  
+        transverseImage = newGrayFrame[y:y+h, x:x+w]
+        
+        cv.imshow('Transverse', transverseImage) 
+
+        # Extract and display the sagittal scan
+        x, y, w, h = 198, y+h, 795, 464 
+        sagittalImage = newGrayFrame[y:y+h, x:x+w]
+        cv.imshow('Sagittal', sagittalImage) 
+
+        # find the ROI in the current frame by moving the current ROI image around the searchWindox box to find the location with the smalled difference
         diffList = []
         index = minIndex = 0
         minErr = 0
         minX = minY = 0
-        for x in range(self.curRoiRect.x - searchWindow, self.curRoiRect.x + searchWindow):
-            for y in range(self.curRoiRect.y - searchWindow, self.curRoiRect.y + searchWindow):
+        for x in range(self.curRoiRect.x - self.searchWindow, self.curRoiRect.x + .self.searchWindow):
+            for y in range(self.curRoiRect.y - self.searchWindow, self.curRoiRect.y + self.searchWindow):
                 # extract the ROI rect from the new image, located at <x, y>
                 testRoiImage = newGrayFrame[y:y+self.curRoiRect.h, x:x+self.curRoiRect.w]
                 diff = cv.subtract(self.curRoiImage, testRoiImage)
@@ -106,6 +135,7 @@ class TrackRoi:
         self.curRoiRect.x = minX
         self.curRoiRect.y = minY
         self.curRoiImage  = newGrayFrame[minY:minY+self.curRoiRect.h, minX:minX+self.curRoiRect.w]
+        cv.imshow("Cur ROI", self.curRoiImage)
 
         # draw a yellow rect around the new ROI
         newAnnotatedFrame = cv.rectangle(newFrame, (minX, minY), 
@@ -115,14 +145,7 @@ class TrackRoi:
         cv.circle(newAnnotatedFrame, roiCenter, 1, (255, 0, 255), 3)
 
         # write the frame # onto the frame
-        text = f"Frame {self.frameNumber}"
-        org = (5, 560)  # Bottom-left corner of the text
-        fontFace = cv.FONT_HERSHEY_SIMPLEX
-        fontScale = 1.0
-        color = (0, 255, 0)  # Green color in BGR
-        thickness = 2
-        lineType = cv.LINE_AA
-        cv.putText(newAnnotatedFrame, text, org, fontFace, fontScale, color, thickness, lineType)
+        cv.putText(newAnnotatedFrame, f"Frame {self.frameNumber}", (5, 560), cv.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2, cv.LINE_AA)
 
         # Draw the new frame with the updated ROI rect and center
         self.frameNumber += 1
@@ -151,7 +174,7 @@ if __name__ == "__main__":
     roiImage     = roiGrayFrame[roiRect.y:roiRect.y+roiRect.h, roiRect.x:roiRect.x+roiRect.w]
     originalRoiImage = copy.copy(roiImage)
 
-    medianBlur = cv.medianBlur(roiImage, 5)   
+    medianBlur = cv.medianBlur(roiImage, trackRoi.blur)   
     contrastImage = cv.convertScaleAbs(medianBlur, alpha=1.5, beta=0)
     ret,threshholdImage = cv.threshold(contrastImage,128,255,cv.THRESH_BINARY)
     cv.imshow("Threshold", threshholdImage)
