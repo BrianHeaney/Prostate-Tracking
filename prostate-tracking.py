@@ -56,10 +56,10 @@ class TrackRoi:
         self.searchWindow = 10   # +/- pixels around the ROI rect to search for the best match
  
         self.enableFiltering = True
-        self.blur  = 5
-        self.alpha = 1.5
-        self.beta  = 0.0
-        self.thresh = 150
+        self.blur   = 5
+        self.alpha  = 2.8
+        self.beta   = -4.9
+        self.thresh = 100
         self.maxval = 255
 
         # read the ROI image file and crop the ROI rect into roiImage
@@ -82,16 +82,17 @@ class TrackRoi:
     # Filter the image if self.enableFiltering is True
     def filterImage(self, image : np.array) -> np.array:
         if self.enableFiltering:
-            blurImage = cv.medianBlur(image, self.blur)
+            blurImage          = cv.medianBlur(image, self.blur)
+            equalizeImage      = cv.equalizeHist(blurImage)
+            #contrastImage      = cv.convertScaleAbs(src=blurImage, alpha=self.alpha, beta=self.beta)
+            ret,thresholdImage = cv.threshold(equalizeImage, self.thresh, self.maxval, cv.THRESH_BINARY)
+            cv.imshow("Equalize" , equalizeImage)
+            cv.imshow("Threshold", thresholdImage)
+            return thresholdImage        
         else:
-            blurImage = copy.copy(image)
+            return copy.copy(image)
 
-        contrastImage      = cv.convertScaleAbs(src=blurImage, alpha=self.alpha, beta=self.beta)
-        ret,thresholdImage = cv.threshold(contrastImage, self.thresh, self.maxval, cv.THRESH_BINARY)
-        cv.imshow("Contrast" , contrastImage)
-        cv.imshow("Threshold", thresholdImage)
- 
-        return thresholdImage
+
         
     # Find the ROI in the next video frame and draw the frame with the annotated ROI
     def processNextFrame(self):
@@ -106,15 +107,14 @@ class TrackRoi:
         newGrayFrame = self.filterImage(newGrayFrame)
 
         # Extract and display the transverse scan
-        x, y, w, h = 198, 91, 795, 453  
-        transverseImage = newGrayFrame[y:y+h, x:x+w]
-        
-        cv.imshow('Transverse', transverseImage) 
+        # x, y, w, h = 198, 91, 795, 453  
+        # transverseImage = newGrayFrame[y:y+h, x:x+w]
+        # cv.imshow('Transverse', transverseImage) 
 
         # Extract and display the sagittal scan
-        x, y, w, h = 198, y+h, 795, 464 
-        sagittalImage = newGrayFrame[y:y+h, x:x+w]
-        cv.imshow('Sagittal', sagittalImage) 
+        # x, y, w, h = 198, y+h, 795, 464 
+        # sagittalImage = newGrayFrame[y:y+h, x:x+w]
+        # cv.imshow('Sagittal', sagittalImage) 
 
         # find the ROI in the current frame by moving the current ROI image around the searchWindox box to find the location with the smalled difference
         diffList = []
@@ -133,7 +133,7 @@ class TrackRoi:
                     minX = x
                     minY = y
 
-                mse = err/(float(roiImage.size))
+                mse = err/(float(self.curRoiImage.size))
                 #diffList.append((index, x, y, err, mse))
                 index += 1
 
@@ -166,24 +166,14 @@ if __name__ == "__main__":
         videoFile = sys.argv[2]
 
     # Extract the human-determined ROI (prostate) from full ROI U/S frame
-    roiCenterX, roiCenterY = 520, 325
-    roiSize = 180  # square ROI rectangle for now
+    roiCenterX, roiCenterY = 518, 322
+    roiSize = 190  # square ROI rectangle for now
 
     trackRoi = TrackRoi(roiFile, videoFile, Point(roiCenterX, roiCenterY), Size(roiSize, roiSize))
 
     roiW, roiH = roiSize, roiSize
     roiRect = Rect(int(roiCenterX - roiW/2), int(roiCenterY - roiH/2), roiW, roiH)
     origRoiRect = copy.copy(roiRect)
-    #x, y, w, h = 439, 226, 182, 195
-    roiFrame     = cv.imread  (roiFile , cv.IMREAD_COLOR)
-    roiGrayFrame = cv.cvtColor(roiFrame, cv.COLOR_BGR2GRAY)
-    roiImage     = roiGrayFrame[roiRect.y:roiRect.y+roiRect.h, roiRect.x:roiRect.x+roiRect.w]
-    originalRoiImage = copy.copy(roiImage)
-
-    medianBlur = cv.medianBlur(roiImage, trackRoi.blur)   
-    contrastImage = cv.convertScaleAbs(medianBlur, alpha=1.5, beta=0)
-    ret,threshholdImage = cv.threshold(contrastImage,128,255,cv.THRESH_BINARY)
-    cv.imshow("Threshold", threshholdImage)
 
     video = cv.VideoCapture(videoFile)
     if not video.isOpened():
