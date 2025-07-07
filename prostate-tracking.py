@@ -55,11 +55,11 @@ class TrackRoi:
 
         self.searchWindow = 10   # +/- pixels around the ROI rect to search for the best match
  
-        self.enableFiltering = True
+        self.enableFiltering = False
         self.blur   = 5
         self.alpha  = 2.8
         self.beta   = -4.9
-        self.thresh = 100
+        self.thresh = 90
         self.maxval = 255
 
         # read the ROI image file and crop the ROI rect into roiImage
@@ -69,6 +69,10 @@ class TrackRoi:
                                          self.origRoiRect.x:self.origRoiRect.x+self.origRoiRect.w]
 
         self.curRoiImage = self.filterImage(self.origRoiImage)
+
+        # Set up the tracker using the Kernelized Correlations Filter tracker 
+        self.tracker = cv.TrackerMIL.create()
+        self.tracker.init(roiGrayImage, (self.origRoiRect.x, self.origRoiRect.y, self.origRoiRect.w, self.origRoiRect.h))
 
         # Draw a red rect around the ROI and a magenta circle at the ROI center in the full u/s frame
         annotatedRoiFrame = copy.copy(roiFullImage)
@@ -104,8 +108,33 @@ class TrackRoi:
             exit()
 
         newGrayFrame = cv.cvtColor(newFrame, cv.COLOR_BGR2GRAY)
-        newGrayFrame = self.filterImage(newGrayFrame)
+        success,bbox=self.tracker.update(newGrayFrame)
+        if success:
+            self.curRoiRect.x = bbox[0]
+            self.curRoiRect.y = bbox[1]
+            self.curRoiImage  = newGrayFrame[bbox[1]:bbox[1]+self.curRoiRect.h, bbox[0]:bbox[0]+self.curRoiRect.w]
+            cv.imshow("Cur ROI", self.curRoiImage)
 
+            # draw a yellow rect around the new ROI
+            newAnnotatedFrame = cv.rectangle(newFrame, (bbox[0], bbox[1]), 
+                                        (bbox[0] + roiRect.w, bbox[1] + roiRect.h), 
+                                        (0, 255, 255), 1) 
+            roiCenter = (int(bbox[0] + self.curRoiRect.w/2), int(bbox[1] + self.curRoiRect.h/2))
+            cv.circle(newAnnotatedFrame, roiCenter, 1, (255, 0, 255), 3)
+
+            # write the frame # onto the frame
+            cv.putText(newAnnotatedFrame, f"Frame {self.frameNumber}", (5, 560), cv.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2, cv.LINE_AA)
+
+            # Draw the new frame with the updated ROI rect and center
+            self.frameNumber += 1
+            cv.imshow('new Frame', newAnnotatedFrame) 
+
+            newGrayFrame = self.filterImage(newGrayFrame)
+        else:
+            newAnnotatedFrame = newFrame.copy()
+            cv.putText(newFrame, f"Frame {self.frameNumber}: couldn't find ROI", (5, 560), cv.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2, cv.LINE_AA)
+            cv.imshow('new Frame', newAnnotatedFrame) 
+        return
         # Extract and display the transverse scan
         # x, y, w, h = 198, 91, 795, 453  
         # transverseImage = newGrayFrame[y:y+h, x:x+w]
@@ -167,7 +196,7 @@ if __name__ == "__main__":
 
     # Extract the human-determined ROI (prostate) from full ROI U/S frame
     roiCenterX, roiCenterY = 518, 322
-    roiSize = 190  # square ROI rectangle for now
+    roiSize = 200 #190  # square ROI rectangle for now
 
     trackRoi = TrackRoi(roiFile, videoFile, Point(roiCenterX, roiCenterY), Size(roiSize, roiSize))
 
