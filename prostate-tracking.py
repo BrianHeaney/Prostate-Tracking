@@ -39,6 +39,7 @@ class TrackRoi:
             print(f"Error: {videoFile} not found")
             exit()
 
+        self.videoFile = videoFile
         self.video = cv.VideoCapture(videoFile)
         self.frameNumber = 1 
         if not self.video.isOpened():
@@ -53,52 +54,34 @@ class TrackRoi:
         self.origRoiRect    = Rect(roiCenter.x - int(roiSize.w/2), roiCenter.y - int(roiSize.h/2), roiSize.w, roiSize.h)
         self.curRoiRect     = copy.copy(self.origRoiRect)
 
-        self.searchWindow = 10   # +/- pixels around the ROI rect to search for the best match
- 
-        self.enableFiltering = False
-        self.blur   = 5
-        self.alpha  = 2.8
-        self.beta   = -4.9
-        self.thresh = 90
-        self.maxval = 255
+        # Use initialRoiFile to create initial ROI
+        roiImage = cv.imread  (self.initialRoiFile, cv.IMREAD_COLOR)
 
-        # read the ROI image file and crop the ROI rect into roiImage
-        roiFullImage = cv.imread  (self.initialRoiFile, cv.IMREAD_COLOR)
-        roiGrayImage = cv.cvtColor(roiFullImage, cv.COLOR_BGR2GRAY)
-        self.origRoiImage = roiGrayImage[self.origRoiRect.y:self.origRoiRect.y+self.origRoiRect.h, 
-                                         self.origRoiRect.x:self.origRoiRect.x+self.origRoiRect.w]
+        fourcc = cv.VideoWriter_fourcc(*'XVID') # Or 'mp4v', 'MJPG' etc.
+        self.videoOut = cv.VideoWriter('output.avi', fourcc, 20.0, (roiImage.shape[0], roiImage.shape[1]))
 
-        self.curRoiImage = self.filterImage(self.origRoiImage)
+        # roiGrayImage = cv.cvtColor(roiFullImage, cv.COLOR_BGR2GRAY)
+        # self.origRoiImage = self.roiGrayImage[self.origRoiRect.y:self.origRoiRect.y+self.origRoiRect.h, 
+        #                                  self.origRoiRect.x:self.origRoiRect.x+self.origRoiRect.w]
+
+        #self.curRoiImage = self.filterImage(self.origRoiImage)
 
         # Set up the tracker using the Kernelized Correlations Filter tracker 
-        self.tracker = cv.TrackerMIL.create()
-        self.tracker.init(roiGrayImage, (self.origRoiRect.x, self.origRoiRect.y, self.origRoiRect.w, self.origRoiRect.h))
+        self.tracker = cv.TrackerKCF.create()
+        #self.tracker = cv.TrackerMIL.create()
+        # NOTE: KCF requires a 3-color (BGR) image. Crashes with a gray image
+        self.tracker.init(roiImage, (self.origRoiRect.x, self.origRoiRect.y, self.origRoiRect.w, self.origRoiRect.h))
 
         # Draw a red rect around the ROI and a magenta circle at the ROI center in the full u/s frame
-        annotatedRoiFrame = copy.copy(roiFullImage)
-        annotatedRoiFrame = cv.rectangle(annotatedRoiFrame, 
+        annotatedFrame = copy.copy(roiImage)
+        annotatedFrame = cv.rectangle(annotatedFrame, 
                                         (self.origRoiRect.x                     , self.origRoiRect.y), 
                                         (self.origRoiRect.x + self.origRoiRect.w, self.origRoiRect.y + self.origRoiRect.h), 
                                         (0, 0, 255), 1) 
-        cv.circle(annotatedRoiFrame, (roiCenter.x, roiCenter.y), 1, (255, 0, 255), 3)
-        cv.imshow('Annotated ROI Image', annotatedRoiFrame) # Display the full ROI ultrasound image with a rectangle over the ROI
-
-    # Filter the image if self.enableFiltering is True
-    def filterImage(self, image : np.array) -> np.array:
-        if self.enableFiltering:
-            blurImage          = cv.medianBlur(image, self.blur)
-            equalizeImage      = cv.equalizeHist(blurImage)
-            #contrastImage      = cv.convertScaleAbs(src=blurImage, alpha=self.alpha, beta=self.beta)
-            ret,thresholdImage = cv.threshold(equalizeImage, self.thresh, self.maxval, cv.THRESH_BINARY)
-            cv.imshow("Equalize" , equalizeImage)
-            cv.imshow("Threshold", thresholdImage)
-            return thresholdImage        
-        else:
-            return copy.copy(image)
-
-
+        cv.circle(annotatedFrame, (roiCenter.x, roiCenter.y), 1, (255, 0, 255), 3)
+        cv.imshow('Annotated ROI Image', annotatedFrame) # Display the full ROI ultrasound image with a rectangle over the ROI
         
-    # Find the ROI in the next video frame and draw the frame with the annotated ROI
+    # Find the ROI in the next video frame and draw the frame with the annotated ROI using the Tracker
     def processNextFrame(self):
         ret, newFrame = self.video.read() # Read a frame
         if not ret: # If frame is not read correctly, stream has ended
@@ -107,13 +90,12 @@ class TrackRoi:
             cv.destroyAllWindows()
             exit()
 
-        newGrayFrame = cv.cvtColor(newFrame, cv.COLOR_BGR2GRAY)
-        success,bbox=self.tracker.update(newGrayFrame)
+        success,bbox=self.tracker.update(newFrame)  
         if success:
             self.curRoiRect.x = bbox[0]
             self.curRoiRect.y = bbox[1]
-            self.curRoiImage  = newGrayFrame[bbox[1]:bbox[1]+self.curRoiRect.h, bbox[0]:bbox[0]+self.curRoiRect.w]
-            cv.imshow("Cur ROI", self.curRoiImage)
+            # self.curRoiImage  = newFrame[bbox[1]:bbox[1]+self.curRoiRect.h, bbox[0]:bbox[0]+self.curRoiRect.w]
+            # cv.imshow("Cur ROI", self.curRoiImage)
 
             # draw a yellow rect around the new ROI
             newAnnotatedFrame = cv.rectangle(newFrame, (bbox[0], bbox[1]), 
@@ -126,66 +108,16 @@ class TrackRoi:
             cv.putText(newAnnotatedFrame, f"Frame {self.frameNumber}", (5, 560), cv.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2, cv.LINE_AA)
 
             # Draw the new frame with the updated ROI rect and center
-            self.frameNumber += 1
-            cv.imshow('new Frame', newAnnotatedFrame) 
+            cv.imshow(self.videoFile, newAnnotatedFrame) 
 
-            newGrayFrame = self.filterImage(newGrayFrame)
         else:
             newAnnotatedFrame = newFrame.copy()
             cv.putText(newFrame, f"Frame {self.frameNumber}: couldn't find ROI", (5, 560), cv.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2, cv.LINE_AA)
             cv.imshow('new Frame', newAnnotatedFrame) 
-        return
-        # Extract and display the transverse scan
-        # x, y, w, h = 198, 91, 795, 453  
-        # transverseImage = newGrayFrame[y:y+h, x:x+w]
-        # cv.imshow('Transverse', transverseImage) 
 
-        # Extract and display the sagittal scan
-        # x, y, w, h = 198, y+h, 795, 464 
-        # sagittalImage = newGrayFrame[y:y+h, x:x+w]
-        # cv.imshow('Sagittal', sagittalImage) 
-
-        # find the ROI in the current frame by moving the current ROI image around the searchWindox box to find the location with the smalled difference
-        diffList = []
-        index = minIndex = 0
-        minErr = 0
-        minX = minY = 0
-        for x in range(self.curRoiRect.x - self.searchWindow, self.curRoiRect.x + self.searchWindow):
-            for y in range(self.curRoiRect.y - self.searchWindow, self.curRoiRect.y + self.searchWindow):
-                # extract the ROI rect from the new image, located at <x, y>
-                testRoiImage = newGrayFrame[y:y+self.curRoiRect.h, x:x+self.curRoiRect.w]
-                diff = cv.subtract(self.curRoiImage, testRoiImage)
-                err = np.sum(diff**2)
-                if index == 0 or err < minErr:
-                    minIndex = index
-                    minErr = err
-                    minX = x
-                    minY = y
-
-                mse = err/(float(self.curRoiImage.size))
-                #diffList.append((index, x, y, err, mse))
-                index += 1
-
-        # update the current ROI image and rectangle
-        self.curRoiRect.x = minX
-        self.curRoiRect.y = minY
-        self.curRoiImage  = newGrayFrame[minY:minY+self.curRoiRect.h, minX:minX+self.curRoiRect.w]
-        cv.imshow("Cur ROI", self.curRoiImage)
-
-        # draw a yellow rect around the new ROI
-        newAnnotatedFrame = cv.rectangle(newFrame, (minX, minY), 
-                                    (minX + roiRect.w, minY + roiRect.h), 
-                                    (0, 255, 255), 1) 
-        roiCenter = (int(minX + self.curRoiRect.w/2), int(minY + self.curRoiRect.h/2))
-        cv.circle(newAnnotatedFrame, roiCenter, 1, (255, 0, 255), 3)
-
-        # write the frame # onto the frame
-        cv.putText(newAnnotatedFrame, f"Frame {self.frameNumber}", (5, 560), cv.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2, cv.LINE_AA)
-
-        # Draw the new frame with the updated ROI rect and center
         self.frameNumber += 1
-        cv.imshow('new Frame', newAnnotatedFrame) 
-
+        return
+ 
 
 if __name__ == "__main__":
     roiFile   = "../Scans/PreTreat_SagittalScroll-1.png"
@@ -200,8 +132,8 @@ if __name__ == "__main__":
 
     trackRoi = TrackRoi(roiFile, videoFile, Point(roiCenterX, roiCenterY), Size(roiSize, roiSize))
 
-    roiW, roiH = roiSize, roiSize
-    roiRect = Rect(int(roiCenterX - roiW/2), int(roiCenterY - roiH/2), roiW, roiH)
+    roiW, roiH  = roiSize, roiSize
+    roiRect     = Rect(int(roiCenterX - roiW/2), int(roiCenterY - roiH/2), roiW, roiH)
     origRoiRect = copy.copy(roiRect)
 
     video = cv.VideoCapture(videoFile)
