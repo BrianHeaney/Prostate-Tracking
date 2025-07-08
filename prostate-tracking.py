@@ -57,14 +57,8 @@ class TrackRoi:
         # Use initialRoiFile to create initial ROI
         roiImage = cv.imread  (self.initialRoiFile, cv.IMREAD_COLOR)
 
-        fourcc = cv.VideoWriter_fourcc(*'XVID') # Or 'mp4v', 'MJPG' etc.
-        self.videoOut = cv.VideoWriter('output.avi', fourcc, 20.0, (roiImage.shape[0], roiImage.shape[1]))
-
-        # roiGrayImage = cv.cvtColor(roiFullImage, cv.COLOR_BGR2GRAY)
-        # self.origRoiImage = self.roiGrayImage[self.origRoiRect.y:self.origRoiRect.y+self.origRoiRect.h, 
-        #                                  self.origRoiRect.x:self.origRoiRect.x+self.origRoiRect.w]
-
-        #self.curRoiImage = self.filterImage(self.origRoiImage)
+        fourcc = cv.VideoWriter_fourcc(*'mp4v') # Or 'mp4v', 'MJPG' etc.
+        self.videoOut = cv.VideoWriter('output.mp4', fourcc, 15.0, (roiImage.shape[1], roiImage.shape[0]), True)
 
         # Set up the tracker using the Kernelized Correlations Filter tracker 
         self.tracker = cv.TrackerKCF.create()
@@ -79,13 +73,14 @@ class TrackRoi:
                                         (self.origRoiRect.x + self.origRoiRect.w, self.origRoiRect.y + self.origRoiRect.h), 
                                         (0, 0, 255), 1) 
         cv.circle(annotatedFrame, (roiCenter.x, roiCenter.y), 1, (255, 0, 255), 3)
-        cv.imshow('Annotated ROI Image', annotatedFrame) # Display the full ROI ultrasound image with a rectangle over the ROI
+        cv.imshow('Initial ROI', annotatedFrame) # Display the full ROI ultrasound image with a rectangle over the ROI
         
     # Find the ROI in the next video frame and draw the frame with the annotated ROI using the Tracker
     def processNextFrame(self):
         ret, newFrame = self.video.read() # Read a frame
-        if not ret: # If frame is not read correctly, stream has ended
+        if not ret: # stream has ended
             print("End of video reached. Exiting after 5 seconds")
+            self.release()
             cv.waitKey(5000) 
             cv.destroyAllWindows()
             exit()
@@ -94,8 +89,6 @@ class TrackRoi:
         if success:
             self.curRoiRect.x = bbox[0]
             self.curRoiRect.y = bbox[1]
-            # self.curRoiImage  = newFrame[bbox[1]:bbox[1]+self.curRoiRect.h, bbox[0]:bbox[0]+self.curRoiRect.w]
-            # cv.imshow("Cur ROI", self.curRoiImage)
 
             # draw a yellow rect around the new ROI
             newAnnotatedFrame = cv.rectangle(newFrame, (bbox[0], bbox[1]), 
@@ -107,8 +100,10 @@ class TrackRoi:
             # write the frame # onto the frame
             cv.putText(newAnnotatedFrame, f"Frame {self.frameNumber}", (5, 560), cv.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2, cv.LINE_AA)
 
+            self.videoOut.write(newAnnotatedFrame)
             # Draw the new frame with the updated ROI rect and center
             cv.imshow(self.videoFile, newAnnotatedFrame) 
+ 
 
         else:
             newAnnotatedFrame = newFrame.copy()
@@ -118,6 +113,8 @@ class TrackRoi:
         self.frameNumber += 1
         return
  
+    def release(self):
+        self.videoOut.release()
 
 if __name__ == "__main__":
     roiFile   = "../Scans/PreTreat_SagittalScroll-1.png"
@@ -144,6 +141,8 @@ if __name__ == "__main__":
     while True:
         trackRoi.processNextFrame()
         if cv.waitKey(25) & 0xFF == ord('q'):
+            trackRoi.release()
+            video.release()
             cv.destroyAllWindows()
             exit()
         
