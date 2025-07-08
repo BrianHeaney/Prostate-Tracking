@@ -58,7 +58,10 @@ class TrackRoi:
         roiImage = cv.imread  (self.initialRoiFile, cv.IMREAD_COLOR)
 
         fourcc = cv.VideoWriter_fourcc(*'mp4v') # Or 'mp4v', 'MJPG' etc.
-        self.videoOut = cv.VideoWriter('output.mp4', fourcc, 15.0, (roiImage.shape[1], roiImage.shape[0]), True)
+        dot = videoFile.rfind('.')
+        slash = videoFile.rfind('/')
+        filename = videoFile[slash+1:dot]
+        self.videoOut = cv.VideoWriter(f'{filename}.mp4', fourcc, 15.0, (roiImage.shape[1], roiImage.shape[0]), True)
 
         # Set up the tracker using the Kernelized Correlations Filter tracker 
         self.tracker = cv.TrackerKCF.create()
@@ -100,7 +103,6 @@ class TrackRoi:
             # write the frame # onto the frame
             cv.putText(newAnnotatedFrame, f"Frame {self.frameNumber}", (5, 560), cv.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2, cv.LINE_AA)
 
-            self.videoOut.write(newAnnotatedFrame)
             # Draw the new frame with the updated ROI rect and center
             cv.imshow(self.videoFile, newAnnotatedFrame) 
  
@@ -109,22 +111,26 @@ class TrackRoi:
             newAnnotatedFrame = newFrame.copy()
             cv.putText(newFrame, f"Frame {self.frameNumber}: couldn't find ROI", (5, 560), cv.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2, cv.LINE_AA)
             cv.imshow('new Frame', newAnnotatedFrame) 
-
+            
+        self.videoOut.write(newAnnotatedFrame)
         self.frameNumber += 1
         return
  
     def release(self):
+        #print("release")
         self.videoOut.release()
 
 if __name__ == "__main__":
-    roiFile   = "../Scans/PreTreat_SagittalScroll-1.png"
-    videoFile = "../Scans/PreTreat_SagittalScroll.avi"
+    #roiFile   = "../Scans/PreTreat_SagittalScroll-1.png"
+    roiFile   = "../Scans/PreTreat_AxialScroll-0.png"
+    #videoFile = "../Scans/PreTreat_SagittalScroll.avi"
+    videoFile = "../Scans/PreTreat_AxialScroll.avi"
     if len(sys.argv) > 2: 
         roiFile   = sys.argv[1]
         videoFile = sys.argv[2]
 
     # Extract the human-determined ROI (prostate) from full ROI U/S frame
-    roiCenterX, roiCenterY = 518, 322
+    roiCenterX, roiCenterY = 500, 340
     roiSize = 200 #190  # square ROI rectangle for now
 
     trackRoi = TrackRoi(roiFile, videoFile, Point(roiCenterX, roiCenterY), Size(roiSize, roiSize))
