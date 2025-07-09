@@ -30,6 +30,12 @@ class Rect:
 # Class that tracks the ROI rectangle through the video 
 # The ROI rectangle is defined by a roiSizexroiSize square located at roiCenter in the initialRoiFile image
 class TrackRoi:
+    def onMouseEvent(self, event, x, y, flags, param):
+        if event == cv.EVENT_LBUTTONDOWN:
+            self.roiSelected = True
+            self.origCenter = Point(x,y)
+
+
     def __init__(self, initialRoiFile : str, videoFile : str, roiCenter : Point, roiSize : Size):
         # Error checking
         if not os.path.isfile(initialRoiFile):
@@ -51,13 +57,24 @@ class TrackRoi:
 
         # initialize class member variables provided by client
         self.initialRoiFile = initialRoiFile
-        self.origCenter     = roiCenter
-        self.curCenter      = copy.copy(roiCenter)
-        self.origRoiRect    = Rect(roiCenter.x - int(roiSize.w/2), roiCenter.y - int(roiSize.h/2), roiSize.w, roiSize.h)
-        self.curRoiRect     = copy.copy(self.origRoiRect)
 
         # Use initialRoiFile to create initial ROI
-        roiImage = cv.imread  (self.initialRoiFile, cv.IMREAD_COLOR)
+        roiImage = cv.imread(self.initialRoiFile, cv.IMREAD_COLOR)
+
+        self.origCenter     = roiCenter #default
+        # Have the user select the center of the ROI
+        roiSelectionImage = 'ROI Selection Frame'
+        cv.namedWindow(roiSelectionImage)
+        # have the user select the ROI center
+        cv.setMouseCallback(roiSelectionImage, self.onMouseEvent)  
+        self.roiSelected = False
+        cv.imshow(roiSelectionImage, roiImage)
+        while not self.roiSelected:
+            key = cv.waitKey(25) & 0xFF
+
+        #self.curCenter      = copy.copy(self.origCenter)
+        self.origRoiRect    = Rect(self.origCenter.x - int(roiSize.w/2), self.origCenter.y - int(roiSize.h/2), roiSize.w, roiSize.h)
+        self.curRoiRect     = copy.copy(self.origRoiRect)
 
         fourcc = cv.VideoWriter_fourcc(*'mp4v') # Or 'mp4v', 'MJPG' etc.
         dot = videoFile.rfind('.')
@@ -77,8 +94,8 @@ class TrackRoi:
                                         (self.origRoiRect.x                     , self.origRoiRect.y), 
                                         (self.origRoiRect.x + self.origRoiRect.w, self.origRoiRect.y + self.origRoiRect.h), 
                                         (0, 0, 255), 1) 
-        cv.circle(annotatedFrame, (roiCenter.x, roiCenter.y), 1, (255, 0, 255), 3)
-        cv.imshow('Initial ROI', annotatedFrame) # Display the full ROI ultrasound image with a rectangle over the ROI
+        cv.circle(annotatedFrame, (self.origCenter.x, self.origCenter.y), 1, (255, 0, 255), 3)
+        cv.imshow(roiSelectionImage, annotatedFrame) # Display the full ROI ultrasound image with a rectangle over the ROI
         
     # Find the ROI in the next video frame and draw the frame with the annotated ROI using the Tracker
     def processNextFrame(self):
