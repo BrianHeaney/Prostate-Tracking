@@ -10,6 +10,35 @@ import cv2 as cv
 import numpy as np
 from functools import partial
 
+import tkinter as tk
+from tkinter import filedialog
+
+def selectFile() -> str:
+    # Create a root Tkinter window (it will be hidden)
+    root = tk.Tk()
+    root.withdraw()  # Hide the main window
+
+    # Open the file selection dialog
+    selectedFile = filedialog.askopenfilename(
+        title="Select a file",
+        filetypes=(
+            ("AVI files", "*.avi"),
+            ("Text files", "*.txt"),
+            ("Python files", "*.py"),
+            ("All files", "*.*")
+        )
+    )
+
+    # Destroy the root window after the dialog is closed
+    root.destroy()
+
+    if selectedFile:
+        print(f"Selected file: {selectedFile}")
+    else:
+        print("No file selected.")
+
+    return selectedFile
+
 class Point:
     def __init__(self, x : int, y : int):
         self.x = x
@@ -46,6 +75,8 @@ class TrackRoi:
             exit()
 
         self.videoFile = videoFile
+
+        self.videoFile = selectFile()
         self.video = cv.VideoCapture(videoFile)
         self.frameNumber = 1 
         self.frames = []
