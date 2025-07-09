@@ -42,13 +42,15 @@ class TrackRoi:
         self.videoFile = videoFile
         self.video = cv.VideoCapture(videoFile)
         self.frameNumber = 1 
+        self.frames = []
+        self.forward = True
+
         if not self.video.isOpened():
             print(f"Could not open {videoFile}")
             exit(-1)
 
         # initialize class member variables provided by client
         self.initialRoiFile = initialRoiFile
-        self.videoFile      = videoFile
         self.origCenter     = roiCenter
         self.curCenter      = copy.copy(roiCenter)
         self.origRoiRect    = Rect(roiCenter.x - int(roiSize.w/2), roiCenter.y - int(roiSize.h/2), roiSize.w, roiSize.h)
@@ -80,13 +82,17 @@ class TrackRoi:
         
     # Find the ROI in the next video frame and draw the frame with the annotated ROI using the Tracker
     def processNextFrame(self):
-        ret, newFrame = self.video.read() # Read a frame
-        if not ret: # stream has ended
-            print("End of video reached. Exiting after 5 seconds")
-            self.release()
-            cv.waitKey(5000) 
-            cv.destroyAllWindows()
-            exit()
+        if self.forward:
+            ret, newFrame = self.video.read() # Read a frame
+            if ret: 
+                self.frames.append(newFrame.copy())
+            else:
+                print("End of video reached. Reversing playback directoin")
+                self.forward = False
+                self.frameNumber -= 2
+
+        if not self.forward:
+            newFrame = self.frames[self.frameNumber]
 
         success,bbox=self.tracker.update(newFrame)  
         if success:
@@ -95,34 +101,38 @@ class TrackRoi:
 
             # draw a yellow rect around the new ROI
             newAnnotatedFrame = cv.rectangle(newFrame, (bbox[0], bbox[1]), 
-                                        (bbox[0] + roiRect.w, bbox[1] + roiRect.h), 
+                                        (bbox[0] + self.curRoiRect.w, bbox[1] + self.curRoiRect.h), 
                                         (0, 255, 255), 1) 
             roiCenter = (int(bbox[0] + self.curRoiRect.w/2), int(bbox[1] + self.curRoiRect.h/2))
             cv.circle(newAnnotatedFrame, roiCenter, 1, (255, 0, 255), 3)
 
             # write the frame # onto the frame
             cv.putText(newAnnotatedFrame, f"Frame {self.frameNumber}", (5, 560), cv.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2, cv.LINE_AA)
-
-            # Draw the new frame with the updated ROI rect and center
-            cv.imshow(self.videoFile, newAnnotatedFrame) 
  
-
         else:
             newAnnotatedFrame = newFrame.copy()
-            cv.putText(newFrame, f"Frame {self.frameNumber}: couldn't find ROI", (5, 560), cv.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2, cv.LINE_AA)
-            cv.imshow('new Frame', newAnnotatedFrame) 
-            
+            cv.putText(newAnnotatedFrame, f"Frame {self.frameNumber}: couldn't find ROI", (5, 560), cv.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2, cv.LINE_AA)
+
+        # Draw the new frame with the updated ROI rect and center, if found
+        cv.imshow(self.videoFile, newAnnotatedFrame) 
+    
         self.videoOut.write(newAnnotatedFrame)
-        self.frameNumber += 1
+        if self.forward:
+            self.frameNumber += 1
+        else:
+            self.frameNumber -= 1
+            if self.frameNumber < 0:
+                self.release()
+                exit()
         return
  
     def release(self):
-        #print("release")
+        self.video.release()
         self.videoOut.release()
 
 if __name__ == "__main__":
-    roiFile   = "../Scans/PreTreat_SagittalScroll-1.png"
-    videoFile = "../Scans/PreTreat_SagittalScroll.avi"
+    # roiFile   = "../Scans/PreTreat_SagittalScroll-1.png"
+    # videoFile = "../Scans/PreTreat_SagittalScroll.avi"
     roiFile   = "../Scans/PreTreat_AxialScroll-0.png"
     videoFile = "../Scans/PreTreat_AxialScroll.avi"
     if len(sys.argv) > 2: 
@@ -130,27 +140,21 @@ if __name__ == "__main__":
         videoFile = sys.argv[2]
 
     # Extract the human-determined ROI (prostate) from full ROI U/S frame
-    #roiCenterX, roiCenterY = 730, 770  # apex in sagittal scan in PreTreat_SagittalScroll-1.png
-    roiCenterX, roiCenterY = 518, 322  # center of prostate in transverse scan in PreTreat_SagittalScroll-0.png
-    roiCenterX, roiCenterY = 500, 340  # center of prostate in transverse scan in PreTreat_AxialScroll-0.png
+    roiCenterX, roiCenterY = 689, 825  # apex in sagittal scan in PreTreat_SagittalScroll-1.png
+    # roiCenterX, roiCenterY = 518, 322  # center of prostate in transverse scan in PreTreat_SagittalScroll-0.png
+    # roiCenterX, roiCenterY = 500, 340  # center of prostate in transverse scan in PreTreat_AxialScroll-0.png
+    roiCenterX, roiCenterY = 740, 770
+    
     roiSize = 200 #190  # square ROI rectangle for now
 
     trackRoi = TrackRoi(roiFile, videoFile, Point(roiCenterX, roiCenterY), Size(roiSize, roiSize))
 
-    roiW, roiH  = roiSize, roiSize
-    roiRect     = Rect(int(roiCenterX - roiW/2), int(roiCenterY - roiH/2), roiW, roiH)
-    origRoiRect = copy.copy(roiRect)
-
-    video = cv.VideoCapture(videoFile)
-    if not video.isOpened():
-        print("empty video, exiting...")
-        exit(-1)
-
     while True:
+        key = cv.waitKey(25) & 0xFF
+        ESC = 27
         trackRoi.processNextFrame()
-        if cv.waitKey(25) & 0xFF == ord('q'):
+        if key == ord('q') or key == ESC:
             trackRoi.release()
-            video.release()
             cv.destroyAllWindows()
             exit()
         
