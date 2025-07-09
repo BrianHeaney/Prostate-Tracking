@@ -121,16 +121,18 @@ class TrackRoi:
         self.videoOut.release()
 
 if __name__ == "__main__":
-    #roiFile   = "../Scans/PreTreat_SagittalScroll-1.png"
+    roiFile   = "../Scans/PreTreat_SagittalScroll-1.png"
+    videoFile = "../Scans/PreTreat_SagittalScroll.avi"
     roiFile   = "../Scans/PreTreat_AxialScroll-0.png"
-    #videoFile = "../Scans/PreTreat_SagittalScroll.avi"
     videoFile = "../Scans/PreTreat_AxialScroll.avi"
     if len(sys.argv) > 2: 
         roiFile   = sys.argv[1]
         videoFile = sys.argv[2]
 
     # Extract the human-determined ROI (prostate) from full ROI U/S frame
-    roiCenterX, roiCenterY = 500, 340
+    #roiCenterX, roiCenterY = 730, 770  # apex in sagittal scan in PreTreat_SagittalScroll-1.png
+    roiCenterX, roiCenterY = 518, 322  # center of prostate in transverse scan in PreTreat_SagittalScroll-0.png
+    roiCenterX, roiCenterY = 500, 340  # center of prostate in transverse scan in PreTreat_AxialScroll-0.png
     roiSize = 200 #190  # square ROI rectangle for now
 
     trackRoi = TrackRoi(roiFile, videoFile, Point(roiCenterX, roiCenterY), Size(roiSize, roiSize))
